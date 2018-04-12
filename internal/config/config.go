@@ -146,6 +146,10 @@ func validateStorages() error {
 			return fmt.Errorf("empty storage path in %v", storage)
 		}
 
+		if fs, err := os.Lstat(storage.Path); err != nil || !fs.IsDir() {
+			return fmt.Errorf("storage paths have to exist %v", storage)
+		}
+
 		stPath := filepath.Clean(storage.Path)
 		for j := 0; j < i; j++ {
 			other := Config.Storages[j]

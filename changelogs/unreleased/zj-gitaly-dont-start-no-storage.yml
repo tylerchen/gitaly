@@ -1,0 +1,5 @@
+---
+title: Kill at boot when storage can't be reached
+merge_request: 675
+author:
+type: changed

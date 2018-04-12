@@ -158,6 +158,11 @@ func TestValidateStorages(t *testing.T) {
 		Config.Storages = oldStorages
 	}(Config.Storages)
 
+	tmpDir := os.TempDir()
+	workDir, err := os.Getwd()
+	require.NoError(t, err)
+	invalidDir := path.Join(tmpDir, t.Name())
+
 	testCases := []struct {
 		desc     string
 		storages []Storage
@@ -166,23 +171,22 @@ func TestValidateStorages(t *testing.T) {
 		{
 			desc: "just 1 storage",
 			storages: []Storage{
-				{Name: "default", Path: "/home/git/repositories"},
+				{Name: "default", Path: tmpDir},
 			},
 		},
 		{
 			desc: "multiple storages",
 			storages: []Storage{
-				{Name: "default", Path: "/home/git/repositories1"},
-				{Name: "other", Path: "/home/git/repositories2"},
-				{Name: "third", Path: "/home/git/repositories3"},
+				{Name: "default", Path: tmpDir},
+				{Name: "other", Path: workDir},
 			},
 		},
 		{
 			desc: "multiple storages pointing to same directory",
 			storages: []Storage{
-				{Name: "default", Path: "/home/git/repositories"},
-				{Name: "other", Path: "/home/git/repositories"},
-				{Name: "third", Path: "/home/git/repositories"},
+				{Name: "default", Path: tmpDir},
+				{Name: "other", Path: tmpDir},
+				{Name: "third", Path: tmpDir},
 			},
 		},
 		{
@@ -206,23 +210,23 @@ func TestValidateStorages(t *testing.T) {
 		{
 			desc: "duplicate definition",
 			storages: []Storage{
-				{Name: "default", Path: "/home/git/repositories"},
-				{Name: "default", Path: "/home/git/repositories"},
+				{Name: "default", Path: tmpDir},
+				{Name: "default", Path: tmpDir},
 			},
 			invalid: true,
 		},
 		{
 			desc: "re-definition",
 			storages: []Storage{
-				{Name: "default", Path: "/home/git/repositories1"},
-				{Name: "default", Path: "/home/git/repositories2"},
+				{Name: "default", Path: tmpDir},
+				{Name: "default", Path: invalidDir},
 			},
 			invalid: true,
 		},
 		{
 			desc: "empty name",
 			storages: []Storage{
-				{Name: "", Path: "/home/git/repositories1"},
+				{Name: "", Path: tmpDir},
 			},
 			invalid: true,
 		},
@@ -230,6 +234,13 @@ func TestValidateStorages(t *testing.T) {
 			desc: "empty path",
 			storages: []Storage{
 				{Name: "default", Path: ""},
+			},
+			invalid: true,
+		},
+		{
+			storages: []Storage{
+				{Name: "default", Path: tmpDir},
+				{Name: "nope", Path: invalidDir},
 			},
 			invalid: true,
 		},
