@@ -5,6 +5,7 @@ import (
 	"path"
 
 	"gitlab.com/gitlab-org/gitaly/internal/config"
+	"gitlab.com/gitlab-org/gitaly/internal/git/hooks"
 
 	pb "gitlab.com/gitlab-org/gitaly-proto/go"
 
@@ -27,7 +28,8 @@ func GetRepoPath(repo *pb.Repository) (string, error) {
 	}
 
 	if IsGitDirectory(repoPath) {
-		return repoPath, nil
+		err = hooks.SetGitLabHooks(repoPath)
+		return repoPath, err
 	}
 
 	return "", status.Errorf(codes.NotFound, "GetRepoPath: not a git repository '%s'", repoPath)

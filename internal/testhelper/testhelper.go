@@ -389,6 +389,10 @@ func cloneTestRepo(t *testing.T, bare bool) (repo *pb.Repository, repoPath strin
 
 	MustRunCommand(t, nil, "git", append(args, testRepoPath, repoPath)...)
 
+	// This allows the self healing hooks to correct themselfs for a location
+	// that maintains the current testing behaviour
+	config.Config.GitlabShell.Dir = testRepoPath
+
 	return repo, repoPath, func() { os.RemoveAll(repoPath) }
 }
 

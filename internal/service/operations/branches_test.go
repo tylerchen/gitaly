@@ -1,10 +1,8 @@
 package operations
 
 import (
-	"io/ioutil"
 	"os"
 	"os/exec"
-	"path"
 	"testing"
 
 	"google.golang.org/grpc/codes"
@@ -120,8 +118,8 @@ func TestSuccessfulGitHooksForUserCreateBranchRequest(t *testing.T) {
 }
 
 func TestFailedUserCreateBranchDueToHooks(t *testing.T) {
-	testRepo, testRepoPath, cleanupFn := testhelper.NewTestRepo(t)
-	defer cleanupFn()
+	testRepo, testRepoPath, cleanup := testhelper.NewTestRepo(t)
+	defer cleanup()
 
 	server, serverSocketPath := runOperationServiceServer(t)
 	defer server.Stop()
@@ -140,11 +138,11 @@ func TestFailedUserCreateBranchDueToHooks(t *testing.T) {
 	hookContent := []byte("#!/bin/sh\nprintenv | paste -sd ' ' -\nexit 1")
 
 	for _, hookName := range gitlabPreHooks {
-		hookPath := path.Join(testRepoPath, "hooks", hookName)
-		ioutil.WriteFile(hookPath, hookContent, 0755)
-		defer os.Remove(hookPath)
+		cleanFn, err := OverrideHooks(testRepoPath, hookName, hookContent)
+		require.NoError(t, err)
+		defer cleanFn()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := testhelper.Context()
 		defer cancel()
 
 		response, err := client.UserCreateBranch(ctx, request)
@@ -368,8 +366,8 @@ func TestFailedUserDeleteBranchDueToValidation(t *testing.T) {
 }
 
 func TestFailedUserDeleteBranchDueToHooks(t *testing.T) {
-	testRepo, testRepoPath, cleanupFn := testhelper.NewTestRepo(t)
-	defer cleanupFn()
+	testRepo, testRepoPath, cleanup := testhelper.NewTestRepo(t)
+	defer cleanup()
 
 	server, serverSocketPath := runOperationServiceServer(t)
 	defer server.Stop()
@@ -397,10 +395,9 @@ func TestFailedUserDeleteBranchDueToHooks(t *testing.T) {
 
 	for _, hookName := range gitlabPreHooks {
 		t.Run(hookName, func(t *testing.T) {
-			require.NoError(t, os.MkdirAll(path.Join(testRepoPath, "hooks"), 0755))
-			hookPath := path.Join(testRepoPath, "hooks", hookName)
-			ioutil.WriteFile(hookPath, hookContent, 0755)
-			defer os.Remove(hookPath)
+			cleanFn, err := OverrideHooks(testRepoPath, hookName, hookContent)
+			require.NoError(t, err)
+			defer cleanFn()
 
 			ctx, cancel := testhelper.Context()
 			defer cancel()

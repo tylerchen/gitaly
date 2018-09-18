@@ -8,6 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"gitlab.com/gitlab-org/gitaly/internal/command"
 	"gitlab.com/gitlab-org/gitaly/internal/git"
+	"gitlab.com/gitlab-org/gitaly/internal/git/hooks"
 	"gitlab.com/gitlab-org/gitaly/internal/helper"
 
 	pb "gitlab.com/gitlab-org/gitaly-proto/go"
@@ -54,6 +55,10 @@ func (s *server) SSHReceivePack(stream pb.SSHService_SSHReceivePackServer) error
 
 	repoPath, err := helper.GetRepoPath(req.Repository)
 	if err != nil {
+		return err
+	}
+
+	if err := hooks.SetGitLabHooks(repoPath); err != nil {
 		return err
 	}
 

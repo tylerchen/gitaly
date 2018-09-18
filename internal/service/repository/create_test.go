@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	pb "gitlab.com/gitlab-org/gitaly-proto/go"
-	"gitlab.com/gitlab-org/gitaly/internal/config"
+	"gitlab.com/gitlab-org/gitaly/internal/git/hooks"
 	"gitlab.com/gitlab-org/gitaly/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/internal/testhelper"
 
@@ -44,13 +44,12 @@ func TestCreateRepositorySuccess(t *testing.T) {
 
 	hooksDir := path.Join(repoDir, "hooks")
 
-	fi, err := os.Lstat(hooksDir)
+	_, err = os.Lstat(hooksDir)
 	require.NoError(t, err)
-	require.True(t, fi.Mode()&os.ModeSymlink > 0, "expected %q to be a symlink, got mode %v", hooksDir, fi.Mode())
 
 	hooksTarget, err := os.Readlink(hooksDir)
 	require.NoError(t, err)
-	require.Equal(t, path.Join(config.Config.GitlabShell.Dir, "hooks"), hooksTarget)
+	require.Equal(t, hooks.Path(), hooksTarget)
 }
 
 func TestCreateRepositoryFailure(t *testing.T) {

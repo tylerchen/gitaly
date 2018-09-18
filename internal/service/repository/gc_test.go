@@ -62,6 +62,7 @@ func TestGarbageCollectSuccess(t *testing.T) {
 			c, err := client.GarbageCollect(ctx, test.req)
 			assert.NoError(t, err)
 			assert.NotNil(t, c)
+			c.Descriptor()
 
 			// Entire `path`-folder gets updated so this is fine :D
 			assertModTimeAfter(t, testTime, packPath)

@@ -2,6 +2,7 @@ package repository
 
 import (
 	pb "gitlab.com/gitlab-org/gitaly-proto/go"
+	"gitlab.com/gitlab-org/gitaly/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/internal/rubyserver"
 
 	"golang.org/x/net/context"
@@ -18,5 +19,16 @@ func (s *server) CreateRepository(ctx context.Context, req *pb.CreateRepositoryR
 		return nil, err
 	}
 
-	return client.CreateRepository(clientCtx, req)
+	resp, err := client.CreateRepository(clientCtx, req)
+	if err != nil {
+		return resp, err
+	}
+
+	// Constructing the full repository path triggers the creation of hooks
+	_, err = helper.GetRepoPath(req.Repository)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, err
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
 	pb "gitlab.com/gitlab-org/gitaly-proto/go"
 	"gitlab.com/gitlab-org/gitaly/internal/command"
+	"gitlab.com/gitlab-org/gitaly/internal/git/hooks"
 	"gitlab.com/gitlab-org/gitaly/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/streamio"
 	"google.golang.org/grpc/codes"
@@ -38,8 +39,11 @@ func (s *server) SSHUploadPack(stream pb.SSHService_SSHUploadPackServer) error {
 		return err
 	}
 
-	args := []string{}
+	if err := hooks.SetGitLabHooks(repoPath); err != nil {
+		return err
+	}
 
+	args := []string{}
 	for _, params := range req.GitConfigOptions {
 		args = append(args, "-c", params)
 	}

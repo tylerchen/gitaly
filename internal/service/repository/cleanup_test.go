@@ -220,3 +220,15 @@ func TestCleanupFileLocks(t *testing.T) {
 		testhelper.AssertFileNotExists(t, lockPath)
 	}
 }
+
+func TestRemovalOldHooksPaths(t *testing.T) {
+	_, testRepoPath, cleanupFn := testhelper.NewTestRepo(t)
+	defer cleanupFn()
+
+	oldHookPath := filepath.Join(testRepoPath, "hooks+123")
+	err := os.Mkdir(oldHookPath, 0700)
+	require.NoError(t, err)
+
+	require.NoError(t, cleanOldHookPaths(testRepoPath))
+	testhelper.AssertFileNotExists(t, oldHookPath)
+}

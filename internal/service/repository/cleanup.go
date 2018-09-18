@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "gitlab.com/gitlab-org/gitaly-proto/go"
+	"gitlab.com/gitlab-org/gitaly/internal/git/hooks"
 	"gitlab.com/gitlab-org/gitaly/internal/helper"
 )
 
@@ -49,7 +50,7 @@ func cleanupRepo(repoPath string) error {
 		return status.Errorf(codes.Internal, "Cleanup: cleanupConfigLock: %v", err)
 	}
 
-	return nil
+	return cleanOldHookPaths(repoPath)
 }
 
 func cleanRefsLocks(rootPath string, threshold time.Time) error {
@@ -143,6 +144,27 @@ func cleanFileLocks(repoPath string, threshold time.Time) error {
 
 		if fi.ModTime().Before(threshold) {
 			if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func cleanOldHookPaths(repoPath string) error {
+	entries, err := ioutil.ReadDir(repoPath)
+	if err != nil {
+		return err
+	}
+
+	for _, info := range entries {
+		if !strings.HasPrefix(info.Name(), hooks.HookDir) {
+			continue
+		}
+
+		if info.Name() != hooks.HookDir && info.IsDir() {
+			if err := os.RemoveAll(filepath.Join(repoPath, info.Name())); err != nil {
 				return err
 			}
 		}

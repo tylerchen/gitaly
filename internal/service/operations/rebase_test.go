@@ -1,9 +1,6 @@
 package operations_test
 
 import (
-	"io/ioutil"
-	"os"
-	"path"
 	"strings"
 	"testing"
 
@@ -106,9 +103,9 @@ func TestFailedUserRebaseRequestDueToPreReceiveError(t *testing.T) {
 
 	for _, hookName := range operations.GitlabPreHooks {
 		t.Run(hookName, func(t *testing.T) {
-			hookPath := path.Join(testRepoPath, "hooks", hookName)
-			require.NoError(t, ioutil.WriteFile(hookPath, hookContent, 0755))
-			defer os.Remove(hookPath)
+			cleanFn, err := operations.OverrideHooks(testRepoPath, hookName, hookContent)
+			require.NoError(t, err)
+			defer cleanFn()
 
 			md := testhelper.GitalyServersMetadata(t, serverSocketPath)
 			ctx := metadata.NewOutgoingContext(ctxOuter, md)

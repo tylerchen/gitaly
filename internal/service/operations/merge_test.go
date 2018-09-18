@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"path"
 	"strings"
 	"testing"
 	"time"
@@ -225,8 +224,8 @@ func TestFailedMergeConcurrentUpdate(t *testing.T) {
 }
 
 func TestFailedMergeDueToHooks(t *testing.T) {
-	testRepo, testRepoPath, cleanupFn := testhelper.NewTestRepo(t)
-	defer cleanupFn()
+	testRepo, testRepoPath, cleanup := testhelper.NewTestRepo(t)
+	defer cleanup()
 
 	server, serverSocketPath := runOperationServiceServer(t)
 	defer server.Stop()
@@ -240,10 +239,9 @@ func TestFailedMergeDueToHooks(t *testing.T) {
 
 	for _, hookName := range gitlabPreHooks {
 		t.Run(hookName, func(t *testing.T) {
-			require.NoError(t, os.MkdirAll(path.Join(testRepoPath, "hooks"), 0755))
-			hookPath := path.Join(testRepoPath, "hooks", hookName)
-			ioutil.WriteFile(hookPath, hookContent, 0755)
-			defer os.Remove(hookPath)
+			cleanFn, err := OverrideHooks(testRepoPath, hookName, hookContent)
+			require.NoError(t, err)
+			defer cleanFn()
 
 			ctx, cancel := testhelper.Context()
 			defer cancel()
@@ -426,8 +424,8 @@ func TestFailedUserFFBranchDueToHooks(t *testing.T) {
 	client, conn := newOperationClient(t, serverSocketPath)
 	defer conn.Close()
 
-	testRepo, testRepoPath, cleanupFn := testhelper.NewTestRepo(t)
-	defer cleanupFn()
+	testRepo, testRepoPath, cleanup := testhelper.NewTestRepo(t)
+	defer cleanup()
 
 	commitID := "cfe32cf61b73a0d5e9f13e774abde7ff789b1660"
 	branchName := "test-ff-target-branch"
@@ -445,9 +443,9 @@ func TestFailedUserFFBranchDueToHooks(t *testing.T) {
 
 	for _, hookName := range gitlabPreHooks {
 		t.Run(hookName, func(t *testing.T) {
-			hookPath := path.Join(testRepoPath, "hooks", hookName)
-			ioutil.WriteFile(hookPath, hookContent, 0755)
-			defer os.Remove(hookPath)
+			cleanFn, err := OverrideHooks(testRepoPath, hookName, hookContent)
+			require.NoError(t, err)
+			defer cleanFn()
 
 			ctx, cancel := testhelper.Context()
 			defer cancel()

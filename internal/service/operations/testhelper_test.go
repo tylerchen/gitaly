@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/gitlab-org/gitaly/internal/config"
+	"gitlab.com/gitlab-org/gitaly/internal/git/hooks"
 	"gitlab.com/gitlab-org/gitaly/internal/rubyserver"
 	"gitlab.com/gitlab-org/gitaly/internal/testhelper"
 
@@ -94,6 +96,7 @@ func newOperationClient(t *testing.T, serverSocketPath string) (pb.OperationServ
 
 var NewOperationClient = newOperationClient
 
+// Caller is responsible for cleanup of the repository
 func WriteEnvToHook(t *testing.T, repoPath, hookName string) (string, string) {
 	hookOutputTemp, err := ioutil.TempFile("", "")
 	require.NoError(t, err)
@@ -103,8 +106,30 @@ func WriteEnvToHook(t *testing.T, repoPath, hookName string) (string, string) {
 
 	hookContent := fmt.Sprintf("#!/bin/sh\n/usr/bin/env > %s\n", hookOutputTemp.Name())
 
-	hookPath := path.Join(repoPath, "hooks", hookName)
-	ioutil.WriteFile(hookPath, []byte(hookContent), 0755)
+	_, err = OverrideHooks(repoPath, hookName, []byte(hookContent))
+	require.NoError(t, err)
 
-	return hookPath, hookOutputTemp.Name()
+	return path.Join(repoPath, "hooks", hookName), hookOutputTemp.Name()
+}
+
+// OverrrideHooks sets the hooks location to its repoPath, with a custom
+// directory, so the repository from which we seed isn't touched and the test
+// doesn't require write permission to that location
+func OverrideHooks(repoPath, name string, content []byte) (func(), error) {
+	gitlabShellDir := config.Config.GitlabShell.Dir
+	config.Config.GitlabShell.Dir = path.Join(repoPath, "tmphook")
+
+	if err := os.MkdirAll(hooks.Path(), 0755); err != nil {
+		return nil, err
+	}
+
+	fullPath := path.Join(hooks.Path(), name)
+	err := ioutil.WriteFile(fullPath, content, 0777)
+
+	cleanFn := func() {
+		config.Config.GitlabShell.Dir = gitlabShellDir
+		os.RemoveAll(fullPath)
+	}
+
+	return cleanFn, err
 }

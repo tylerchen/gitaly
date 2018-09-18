@@ -1,10 +1,8 @@
 package operations
 
 import (
-	"io/ioutil"
 	"os"
 	"os/exec"
-	"path"
 	"strings"
 	"testing"
 
@@ -297,8 +295,8 @@ func TestFailedUserDeleteTagDueToHooks(t *testing.T) {
 	client, conn := newOperationClient(t, serverSocketPath)
 	defer conn.Close()
 
-	testRepo, testRepoPath, cleanupFn := testhelper.NewTestRepo(t)
-	defer cleanupFn()
+	testRepo, testRepoPath, cleanup := testhelper.NewTestRepo(t)
+	defer cleanup()
 
 	tagNameInput := "to-be-deleted-soon-tag"
 	testhelper.MustRunCommand(t, nil, "git", "-C", testRepoPath, "tag", tagNameInput)
@@ -320,9 +318,9 @@ func TestFailedUserDeleteTagDueToHooks(t *testing.T) {
 
 	for _, hookName := range gitlabPreHooks {
 		t.Run(hookName, func(t *testing.T) {
-			hookPath := path.Join(testRepoPath, "hooks", hookName)
-			ioutil.WriteFile(hookPath, hookContent, 0755)
-			defer os.Remove(hookPath)
+			cleanFn, err := OverrideHooks(testRepoPath, hookName, hookContent)
+			require.NoError(t, err)
+			defer cleanFn()
 
 			ctx, cancel := testhelper.Context()
 			defer cancel()
@@ -344,8 +342,8 @@ func TestFailedUserCreateTagDueToHooks(t *testing.T) {
 	client, conn := newOperationClient(t, serverSocketPath)
 	defer conn.Close()
 
-	testRepo, testRepoPath, cleanupFn := testhelper.NewTestRepo(t)
-	defer cleanupFn()
+	testRepo, testRepoPath, cleanup := testhelper.NewTestRepo(t)
+	defer cleanup()
 
 	user := &pb.User{
 		Name:       []byte("Ahmad Sherif"),
@@ -363,9 +361,9 @@ func TestFailedUserCreateTagDueToHooks(t *testing.T) {
 	hookContent := []byte("#!/bin/sh\necho GL_ID=$GL_ID\nexit 1")
 
 	for _, hookName := range gitlabPreHooks {
-		hookPath := path.Join(testRepoPath, "hooks", hookName)
-		ioutil.WriteFile(hookPath, hookContent, 0755)
-		defer os.Remove(hookPath)
+		cleanFn, err := OverrideHooks(testRepoPath, hookName, hookContent)
+		require.NoError(t, err)
+		defer cleanFn()
 
 		ctx, cancel := testhelper.Context()
 		defer cancel()
