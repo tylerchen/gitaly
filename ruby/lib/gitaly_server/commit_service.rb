@@ -5,41 +5,42 @@ module GitalyServer
 
     def commit_stats(request, call)
       bridge_exceptions do
-        repo = Gitlab::Git::Repository.from_gitaly(request.repository, call)
-        revision = request.revision unless request.revision.empty?
+        Gitlab::Git::Repository.from_gitaly_with_block(request.repository, call) do |repo|
+          revision = request.revision unless request.revision.empty?
 
-        commit = Gitlab::Git::Commit.find(repo, revision)
+          commit = Gitlab::Git::Commit.find(repo, revision)
 
-        # In the odd case that the revision given doesn't exist we need to raise
-        # an exception. Since GitLab (currently) already does this for us we don't
-        # expect this to actually happen, just guarding against future code change
-        raise GRPC::Internal.new("commit not found for revision '#{revision}'") unless commit
+          # In the odd case that the revision given doesn't exist we need to raise
+          # an exception. Since GitLab (currently) already does this for us we don't
+          # expect this to actually happen, just guarding against future code change
+          raise GRPC::Internal.new("commit not found for revision '#{revision}'") unless commit
 
-        stats = Gitlab::Git::CommitStats.new(repo, commit)
+          stats = Gitlab::Git::CommitStats.new(repo, commit)
 
-        Gitaly::CommitStatsResponse.new(oid: stats.id, additions: stats.additions, deletions: stats.deletions)
+          Gitaly::CommitStatsResponse.new(oid: stats.id, additions: stats.additions, deletions: stats.deletions)
+        end
       end
     end
 
     # TODO remove this implementation in GitLab 11.3
     def list_commits_by_oid(request, call)
       bridge_exceptions do
-        repository = Gitlab::Git::Repository.from_gitaly(request.repository, call)
+        Gitlab::Git::Repository.from_gitaly_with_block(request.repository, call) do |repository|
+          Enumerator.new do |y|
+            request.oid.each_slice(20) do |oids|
+              commits = oids.map do |oid|
+                commit =
+                  begin
+                    repository.rev_parse_target(oid)
+                  rescue Rugged::ReferenceError, Rugged::InvalidError
+                    nil
+                  end
 
-        Enumerator.new do |y|
-          request.oid.each_slice(20) do |oids|
-            commits = oids.map do |oid|
-              commit =
-                begin
-                  repository.rev_parse_target(oid)
-                rescue Rugged::ReferenceError, Rugged::InvalidError
-                  nil
-                end
+                commit.is_a?(Rugged::Commit) ? gitaly_commit_from_rugged(commit) : nil
+              end.compact
 
-              commit.is_a?(Rugged::Commit) ? gitaly_commit_from_rugged(commit) : nil
-            end.compact
-
-            y.yield Gitaly::ListCommitsByOidResponse.new(commits: commits)
+              y.yield Gitaly::ListCommitsByOidResponse.new(commits: commits)
+            end
           end
         end
       end
@@ -47,28 +48,29 @@ module GitalyServer
 
     def find_commits(request, call)
       bridge_exceptions do
-        repository = Gitlab::Git::Repository.from_gitaly(request.repository, call)
-        options = {
-          ref: request.revision,
-          limit: request.limit,
-          follow: request.follow,
-          skip_merges: request.skip_merges,
-          disable_walk: request.disable_walk,
-          offset: request.offset,
-          all: request.all
-        }
-        options[:path] = request.paths unless request.paths.empty?
+        Gitlab::Git::Repository.from_gitaly_with_block(request.repository, call) do |repository|
+          options = {
+            ref: request.revision,
+            limit: request.limit,
+            follow: request.follow,
+            skip_merges: request.skip_merges,
+            disable_walk: request.disable_walk,
+            offset: request.offset,
+            all: request.all
+          }
+          options[:path] = request.paths unless request.paths.empty?
 
-        options[:before] = Time.at(request.before.seconds).to_datetime if request.before
-        options[:after] = Time.at(request.after.seconds).to_datetime if request.after
+          options[:before] = Time.at(request.before.seconds).to_datetime if request.before
+          options[:after] = Time.at(request.after.seconds).to_datetime if request.after
 
-        Enumerator.new do |y|
-          # Send back 'pages' with 20 commits each
-          repository.raw_log(options).each_slice(20) do |rugged_commits|
-            commits = rugged_commits.map do |rugged_commit|
-              gitaly_commit_from_rugged(rugged_commit)
+          Enumerator.new do |y|
+            # Send back 'pages' with 20 commits each
+            repository.raw_log(options).each_slice(20) do |rugged_commits|
+              commits = rugged_commits.map do |rugged_commit|
+                gitaly_commit_from_rugged(rugged_commit)
+              end
+              y.yield Gitaly::FindCommitsResponse.new(commits: commits)
             end
-            y.yield Gitaly::FindCommitsResponse.new(commits: commits)
           end
         end
       end
@@ -86,22 +88,24 @@ module GitalyServer
 
             y << Gitaly::FilterShasWithSignaturesResponse.new(shas: Gitlab::Git::Commit.shas_with_signatures(repository, request.shas))
           end
+
+          repository&.cleanup
         end
       end
     end
 
     def extract_commit_signature(request, call)
       bridge_exceptions do
-        repository = Gitlab::Git::Repository.from_gitaly(request.repository, call)
+        Gitlab::Git::Repository.from_gitaly_with_block(request.repository, call) do |repository|
+          Enumerator.new do |y|
+            each_commit_signature_chunk(repository, request.commit_id) do |signature_chunk, signed_text_chunk|
+              if signature_chunk.present?
+                y.yield Gitaly::ExtractCommitSignatureResponse.new(signature: signature_chunk)
+              end
 
-        Enumerator.new do |y|
-          each_commit_signature_chunk(repository, request.commit_id) do |signature_chunk, signed_text_chunk|
-            if signature_chunk.present?
-              y.yield Gitaly::ExtractCommitSignatureResponse.new(signature: signature_chunk)
-            end
-
-            if signed_text_chunk.present?
-              y.yield Gitaly::ExtractCommitSignatureResponse.new(signed_text: signed_text_chunk)
+              if signed_text_chunk.present?
+                y.yield Gitaly::ExtractCommitSignatureResponse.new(signed_text: signed_text_chunk)
+              end
             end
           end
         end
@@ -110,24 +114,24 @@ module GitalyServer
 
     def get_commit_signatures(request, call)
       bridge_exceptions do
-        repository = Gitlab::Git::Repository.from_gitaly(request.repository, call)
+        Gitlab::Git::Repository.from_gitaly_with_block(request.repository, call) do |repository|
+          Enumerator.new do |y|
+            request.commit_ids.each do |commit_id|
+              msg = Gitaly::GetCommitSignaturesResponse.new(commit_id: commit_id)
 
-        Enumerator.new do |y|
-          request.commit_ids.each do |commit_id|
-            msg = Gitaly::GetCommitSignaturesResponse.new(commit_id: commit_id)
+              each_commit_signature_chunk(repository, commit_id) do |signature_chunk, signed_text_chunk|
+                if signature_chunk.present?
+                  msg.signature = signature_chunk
+                  y.yield msg
+                end
 
-            each_commit_signature_chunk(repository, commit_id) do |signature_chunk, signed_text_chunk|
-              if signature_chunk.present?
-                msg.signature = signature_chunk
-                y.yield msg
+                if signed_text_chunk.present?
+                  msg.signed_text = signed_text_chunk
+                  y.yield msg
+                end
+
+                msg = Gitaly::GetCommitSignaturesResponse.new
               end
-
-              if signed_text_chunk.present?
-                msg.signed_text = signed_text_chunk
-                y.yield msg
-              end
-
-              msg = Gitaly::GetCommitSignaturesResponse.new
             end
           end
         end
@@ -136,22 +140,22 @@ module GitalyServer
 
     def get_commit_messages(request, call)
       bridge_exceptions do
-        repository = Gitlab::Git::Repository.from_gitaly(request.repository, call)
+        Gitlab::Git::Repository.from_gitaly_with_block(request.repository, call) do |repository|
+          Enumerator.new do |y|
+            request.commit_ids.each do |commit_id|
+              commit = Gitlab::Git::Commit.find(repository, commit_id)
+              next unless commit
 
-        Enumerator.new do |y|
-          request.commit_ids.each do |commit_id|
-            commit = Gitlab::Git::Commit.find(repository, commit_id)
-            next unless commit
+              response = Gitaly::GetCommitMessagesResponse.new(commit_id: commit.id)
+              io = StringIO.new(commit.message)
 
-            response = Gitaly::GetCommitMessagesResponse.new(commit_id: commit.id)
-            io = StringIO.new(commit.message)
+              while chunk = io.read(Gitlab.config.git.max_commit_or_tag_message_size)
+                response.message = chunk
 
-            while chunk = io.read(Gitlab.config.git.max_commit_or_tag_message_size)
-              response.message = chunk
+                y.yield response
 
-              y.yield response
-
-              response = Gitaly::GetCommitMessagesResponse.new
+                response = Gitaly::GetCommitMessagesResponse.new
+              end
             end
           end
         end

@@ -51,9 +51,10 @@ module Gitlab
         def from_gitaly_with_block(gitaly_repository, call)
           repository = from_gitaly(gitaly_repository, call)
 
-          yield repository
+          retval = yield repository
 
           repository.cleanup
+          retval
         end
 
         def create(repo_path)
