@@ -15,6 +15,8 @@ module GitalyServer
           target_revision = get_param!(request, :target_revision)
 
           created_tag = repo.add_tag(tag_name, user: user, target: target_revision, message: request.message.presence)
+          repo.cleanup
+
           return Gitaly::UserCreateTagResponse.new unless created_tag
 
           rugged_commit = created_tag.dereferenced_target.rugged_commit
@@ -43,6 +45,7 @@ module GitalyServer
           tag_name = get_param!(request, :tag_name)
 
           repo.rm_tag(tag_name, user: user)
+          repo.cleanup
 
           Gitaly::UserDeleteTagResponse.new
         rescue Gitlab::Git::PreReceiveError => e
@@ -63,6 +66,8 @@ module GitalyServer
           branch_name = request.branch_name
           user = Gitlab::Git::User.from_gitaly(gitaly_user)
           created_branch = repo.add_branch(branch_name, user: user, target: target)
+          repo.cleanup
+
           return Gitaly::UserCreateBranchResponse.new unless created_branch
 
           rugged_commit = created_branch.dereferenced_target.rugged_commit
@@ -88,6 +93,7 @@ module GitalyServer
 
           user = Gitlab::Git::User.from_gitaly(gitaly_user)
           repo.update_branch(branch_name, user: user, newrev: newrev, oldrev: oldrev)
+          repo.cleanup
 
           Gitaly::UserUpdateBranchResponse.new
         rescue Gitlab::Git::Repository::InvalidRef, Gitlab::Git::CommitError => ex
@@ -105,6 +111,7 @@ module GitalyServer
           user = Gitlab::Git::User.from_gitaly(request.user)
 
           repo.rm_branch(request.branch_name, user: user)
+          repo.cleanup
 
           Gitaly::UserDeleteBranchResponse.new
         rescue Gitlab::Git::PreReceiveError => e
@@ -151,6 +158,7 @@ module GitalyServer
           user = Gitlab::Git::User.from_gitaly(request.user)
 
           result = repo.ff_merge(user, request.commit_id, request.branch)
+          repo.cleanup
           branch_update = branch_update_result(result)
 
           Gitaly::UserFFBranchResponse.new(branch_update: branch_update)
@@ -180,6 +188,7 @@ module GitalyServer
             start_branch_name: request.start_branch_name.presence,
             start_repository: start_repository
           )
+          repo.cleanup
 
           branch_update = branch_update_result(result)
           Gitaly::UserCherryPickResponse.new(branch_update: branch_update)
@@ -209,6 +218,7 @@ module GitalyServer
             start_branch_name: request.start_branch_name.presence,
             start_repository: start_repository
           )
+          repo.cleanup
 
           branch_update = branch_update_result(result)
           Gitaly::UserRevertResponse.new(branch_update: branch_update)
@@ -233,6 +243,7 @@ module GitalyServer
                                    branch_sha: request.branch_sha,
                                    remote_repository: remote_repository,
                                    remote_branch: request.remote_branch)
+          repo.cleanup
 
           Gitaly::UserRebaseResponse.new(rebase_sha: rebase_sha)
         rescue Gitlab::Git::PreReceiveError => e
@@ -267,6 +278,7 @@ module GitalyServer
           opts = commit_files_opts(call, header, actions)
 
           branch_update = branch_update_result(repo.multi_action(user, opts))
+          repo.cleanup
 
           Gitaly::UserCommitFilesResponse.new(branch_update: branch_update)
         rescue Gitlab::Git::Index::IndexError => e
@@ -292,6 +304,7 @@ module GitalyServer
                                    end_sha: request.end_sha,
                                    author: author,
                                    message: request.commit_message)
+          repo.cleanup
 
           Gitaly::UserSquashResponse.new(squash_sha: squash_sha)
         rescue Gitlab::Git::Repository::GitError => e
